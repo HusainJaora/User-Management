@@ -23,13 +23,16 @@ const viewUserProfile = async (req, res) => {
 
     const user = userRows[0];
 
-    // Fetch projects of that user
+  
     const [projectRows] = await db.execute(
-      `SELECT project_name, support_type
-       FROM user_projects
-       WHERE user_id = ?`,
+      ` SELECT p.project_name, up.support_type
+       FROM user_projects up
+       JOIN projects p ON up.project_id = p.project_id
+       WHERE up.user_id = ?`,
       [id]
     );
+
+   
 
     return res.status(200).json({
       message: "User profile fetched successfully",
