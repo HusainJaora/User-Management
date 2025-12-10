@@ -14,7 +14,6 @@ const UserProfile = () => {
       const userStr = localStorage.getItem('user');
       if (userStr) {
         const user = JSON.parse(userStr);
-        console.log('👤 User from localStorage:', user);
         return user;
       }
       return null;
@@ -25,14 +24,11 @@ const UserProfile = () => {
   };
 
   useEffect(() => {
-    console.log('🔍 UserProfile component mounted');
-    
     // Check if user is logged in
     const token = localStorage.getItem('accessToken');
     const userData = getUserData();
     
     if (!token || !userData) {
-      console.log('❌ No auth found, redirecting to login');
       navigate('/login');
       return;
     }
@@ -66,7 +62,7 @@ const UserProfile = () => {
         return;
       }
 
-      console.log('📡 Fetching profile for user ID:', userData.user_id);
+    
       const response = await fetch(`${ENDPOINTS.PROFILE.USER_PROFILE}/${userData.user_id}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -74,10 +70,8 @@ const UserProfile = () => {
         }
       });
 
-      console.log('📡 Response status:', response.status);
 
       if (response.status === 401) {
-        console.log('❌ Unauthorized, clearing auth and redirecting');
         localStorage.removeItem('accessToken');
         localStorage.removeItem('user');
         localStorage.removeItem('tokenExpiry');
@@ -90,10 +84,9 @@ const UserProfile = () => {
       }
 
       const data = await response.json();
-      console.log('✅ Profile data received:', data);
       setProfile(data.user);
     } catch (error) {
-      console.error('❌ Fetch profile error:', error);
+      console.error(' Fetch profile error:', error);
       setError('Failed to load profile. Please try again.');
     } finally {
       setLoading(false);
@@ -101,7 +94,6 @@ const UserProfile = () => {
   };
 
   const handleLogout = () => {
-    console.log('🚪 Logging out...');
     localStorage.removeItem('accessToken');
     localStorage.removeItem('user');
     localStorage.removeItem('tokenExpiry');

@@ -4,7 +4,6 @@ import ENDPOINTS from '../api/Endpoint';
 
 // Function to clear localStorage and redirect to login
 const clearAuthData = () => {
-  console.log('🧹 Clearing auth data...');
   localStorage.removeItem('accessToken');
   localStorage.removeItem('tokenExpiry');
   localStorage.removeItem('user');
@@ -14,11 +13,9 @@ const clearAuthData = () => {
 const isTokenExpired = () => {
   const expiryTime = localStorage.getItem('tokenExpiry');
   if (!expiryTime) {
-    console.log('⏰ No expiry time found');
     return true;
   }
   const expired = Date.now() > parseInt(expiryTime);
-  console.log('⏰ Token expired:', expired);
   return expired;
 };
 
@@ -28,7 +25,6 @@ const setupAutoLogout = (navigate) => {
   if (!expiryTime) return;
 
   const timeUntilExpiry = parseInt(expiryTime) - Date.now();
-  console.log('⏰ Auto-logout set for:', timeUntilExpiry / 1000 / 60, 'minutes');
   
   if (timeUntilExpiry > 0) {
     setTimeout(() => {
@@ -56,28 +52,24 @@ const LoginPage = () => {
 
   // Check if user is already logged in on component mount
   useEffect(() => {
-    console.log('🔍 Login page mounted, checking existing auth...');
     const accessToken = localStorage.getItem('accessToken');
     const userStr = localStorage.getItem('user');
-    console.log('📦 AccessToken exists:', !!accessToken);
-    console.log('📦 User string:', userStr);
+    
     
     const user = JSON.parse(userStr || '{}');
-    console.log('👤 Parsed user:', user);
-    console.log('👤 User role:', user.role);
+
     
     if (accessToken && !isTokenExpired()) {
-      console.log('✅ Valid session found, redirecting...');
       // User is already logged in, redirect based on role
       if (user.role === 'Admin') {
-        console.log('👑 Admin user detected, redirecting to dashboard');
+        
         navigate('/admin/dashboard', { replace: true });
       } else {
-        console.log('👤 Regular user detected, redirecting to home');
+        
         navigate('/home', { replace: true });
       }
     } else {
-      console.log('❌ No valid session found');
+      console.log(' No valid session found');
     }
   }, [navigate]);
 
@@ -108,18 +100,15 @@ const LoginPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('🚀 Login form submitted');
     setErrors([]);
 
     const validationErrors = validateForm();
     if (validationErrors.length > 0) {
-      console.log('❌ Validation failed:', validationErrors);
       setErrors(validationErrors);
       return;
     }
 
     setLoading(true);
-    console.log('📡 Sending login request...');
 
     try {
       const response = await fetch(ENDPOINTS.AUTH.LOGIN, {
@@ -135,10 +124,8 @@ const LoginPage = () => {
 
       console.log('📡 Response status:', response.status);
       const data = await response.json();
-      console.log('📦 Response data:', data);
 
       if (!response.ok) {
-        console.log('❌ Login failed');
         if (data.errors && Array.isArray(data.errors)) {
           setErrors(data.errors);
         } else if (data.message) {
@@ -149,26 +136,20 @@ const LoginPage = () => {
         return;
       }
 
-      console.log('✅ Login successful!');
-      console.log('👤 User data from response:', data.user);
-      console.log('🔑 Access token received:', data.accessToken ? 'Yes' : 'No');
+
 
       // Store user info FIRST
       if (data.user) {
         const userJson = JSON.stringify(data.user);
-        console.log('💾 Storing user to localStorage:', userJson);
         localStorage.setItem('user', userJson);
         
         // Verify storage
         const storedUser = localStorage.getItem('user');
-        console.log('✔️ Verified stored user:', storedUser);
-        console.log('✔️ Parsed stored user:', JSON.parse(storedUser));
       }
 
       // Then store access token with expiry time
       if (data.accessToken) {
         const expiresAt = Date.now() + (24 * 60 * 60 * 1000);
-        console.log('💾 Storing token, expires at:', new Date(expiresAt));
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('tokenExpiry', expiresAt.toString());
       }
@@ -176,30 +157,21 @@ const LoginPage = () => {
       // Set up automatic logout after 24 hours
       setupAutoLogout(navigate);
 
-      console.log('🎯 Determining redirect path...');
-      console.log('👤 User role:', data.user?.role);
-      console.log('👤 Role check (Admin):', data.user?.role === 'Admin');
 
       // Use setTimeout to ensure localStorage is updated before navigation
       setTimeout(() => {
         // Double check localStorage before navigation
         const verifyUser = JSON.parse(localStorage.getItem('user') || '{}');
-        console.log('🔍 Final verification before redirect:');
-        console.log('   - User:', verifyUser);
-        console.log('   - Role:', verifyUser.role);
-        console.log('   - Is Admin:', verifyUser.role === 'Admin');
+
         
         if (data.user && data.user.role === 'Admin') {
-          console.log('🚀 REDIRECTING TO: /admin/dashboard');
           navigate('/admin/dashboard', { replace: true });
         } else {
-          console.log('🚀 REDIRECTING TO: /home');
           navigate('/home', { replace: true });
         }
       }, 100);
 
     } catch (error) {
-      console.error('💥 Login error:', error);
       setErrors(['Network error. Please check your connection and try again.']);
     } finally {
       setLoading(false);
