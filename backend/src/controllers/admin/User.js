@@ -90,8 +90,8 @@ const addUser = async (req, res) => {
 };
 
 const editUser = async (req, res) => {
-  const { id } = req.params; // or parseInt if you prefer
-  const { username, full_name, email, mobile, role } = req.body;
+  const { id } = req.params; // user_id
+  const { username, full_name, email, mobile, role, projects } = req.body; 
 
   const connection = await db.getConnection();
 
@@ -111,7 +111,7 @@ const editUser = async (req, res) => {
 
     const existing = existingRows[0];
 
-    // 2) Conditional duplicate checks (only if field provided)
+    // 2) Conditional duplicate checks (only if provided)
     if (username) {
       const [dup] = await connection.query(
         `SELECT user_id FROM users WHERE username = ? AND user_id != ?`,
@@ -134,7 +134,7 @@ const editUser = async (req, res) => {
       }
     }
 
-    // 3) Update only provided fields using COALESCE to preserve existing values
+    // 3) Update only provided fields
     await connection.query(
       `
       UPDATE users
@@ -149,28 +149,113 @@ const editUser = async (req, res) => {
       [username, full_name, email, mobile, role, id]
     );
 
+    // 4) Handle projects if provided (replace existing assignments)
+    if (Array.isArray(projects)) {
+      
+      const ids = [];
+      for (const p of projects) {
+
+        const pid = p.project_id ?? p.projectId ?? p.id;
+        const support = p.support_type ?? p.supportType ?? p.support_type;
+
+        if (!pid || !support) {
+          await connection.rollback();
+          return res.status(400).json({
+            error: "Each project must include project_id and support_type"
+          });
+        }
+
+        // coerce to number for DB checks (but keep original for response)
+        const pidNum = Number(pid);
+        if (Number.isNaN(pidNum) || pidNum <= 0) {
+          await connection.rollback();
+          return res.status(400).json({ error: `Invalid project_id: ${pid}` });
+        }
+
+        ids.push(pidNum);
+      }
+
+      // --- NEW: duplicate check within payload ---
+      const seen = new Set();
+      for (const pid of ids) {
+        if (seen.has(pid)) {
+          await connection.rollback();
+          return res.status(400).json({ error: `Duplicate project assignment in request: project_id ${pid}` });
+        }
+        seen.add(pid);
+      }
+      // --- end duplicate check ---
+
+      // Validate each project exists (use a single query to check all ids at once for efficiency)
+      if (ids.length > 0) {
+        // create placeholders like ?,?,?
+        const placeholders = ids.map(() => '?').join(',');
+        const [projRows] = await connection.query(
+          `SELECT project_id FROM projects WHERE project_id IN (${placeholders})`,
+          ids
+        );
+
+        const existingProjIds = new Set(projRows.map(r => Number(r.project_id)));
+        for (const pid of ids) {
+          if (!existingProjIds.has(pid)) {
+            await connection.rollback();
+            return res.status(400).json({ error: `Invalid project_id: ${pid}` });
+          }
+        }
+      }
+
+      // Delete existing mappings
+      await connection.query(
+        `DELETE FROM user_projects WHERE user_id = ?`,
+        [id]
+      );
+
+      // Insert new mappings (use prepared statements)
+      for (let i = 0; i < projects.length; i++) {
+        const p = projects[i];
+        const pid = Number(p.project_id ?? p.projectId ?? p.id);
+        const support = p.support_type ?? p.supportType ?? p.support_type;
+        await connection.query(
+          `INSERT INTO user_projects (user_id, project_id, support_type) VALUES (?, ?, ?)`,
+          [id, pid, support]
+        );
+      }
+    }
+
     await connection.commit();
 
-    // 4) Return merged user object (show final values)
+    // 5) Build response - fetch fresh user and projects to return final state
+    const [userRows] = await connection.query(
+      `SELECT user_id, username, full_name, email, mobile, role FROM users WHERE user_id = ?`,
+      [id]
+    );
+    const user = userRows[0];
+
+    const [projectRows] = await connection.query(
+      `SELECT p.project_id, p.project_name, up.support_type
+       FROM user_projects up
+       JOIN projects p ON up.project_id = p.project_id
+       WHERE up.user_id = ?`,
+      [id]
+    );
+
     return res.status(200).json({
       message: "User updated successfully",
       user: {
-        user_id: id,
-        username: username ?? existing.username,
-        full_name: full_name ?? existing.full_name,
-        email: email ?? existing.email,
-        mobile: mobile ?? existing.mobile,
-        role: role ?? existing.role
+        ...user,
+        projects: projectRows
       }
     });
+
   } catch (error) {
     try { await connection.rollback(); } catch (e) { console.error("Rollback error:", e); }
     console.error("Error updating user:", error);
-    return res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error", detail: error.message });
   } finally {
     connection.release();
   }
 };
+
 
 const deleteUser = async (req, res) => {
   const connection = await db.getConnection();
@@ -272,7 +357,7 @@ const getSingleUser = async (req, res) => {
 
 
      const [projectRows] = await db.execute(
-      `SELECT p.project_name, up.support_type
+      `SELECT p.project_id, p.project_name, up.support_type
        FROM user_projects up
        JOIN projects p ON up.project_id = p.project_id
        WHERE up.user_id = ?`,
